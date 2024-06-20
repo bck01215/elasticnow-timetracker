@@ -18,22 +18,7 @@ async fn main() {
             search,
             bin,
         } => {
-            let config = config::Config::from_toml_file();
-            if config.is_err() {
-                tracing::error!(
-                    "Unable to load config file. Please run {} and try again.",
-                    Colour::Green.bold().paint("elasticnow setup")
-                );
-                std::process::exit(2);
-            }
-            tracing::info!("New: {:?}", new);
-            tracing::info!("Comment: {:?}", comment);
-            tracing::info!("Time Worked: {:?}", time_worked);
-            tracing::info!("Search: {:?}", search);
-            tracing::info!("Bin: {:?}", bin);
-            let tkts = vec!["TKT2923290", "TKT2923291", "TKT2923292"];
-            let item = cli::args::choose_options(tkts);
-            tracing::info!("Selected item: {:?}", item);
+            run_timetrack(new, comment, time_worked, search, bin).await;
         }
         cli::args::Commands::Setup {
             id,
@@ -43,35 +28,131 @@ async fn main() {
             sn_password,
             bin,
         } => {
-            cli::config::make_dir_if_none();
-            let mut config = cli::config::Config {
-                id,
-                instance,
-                sn_instance,
-                sn_username,
-                sn_password,
-                bin: "".to_string(),
-            };
-            let sn_client = ServiceNow::new(
-                &config.sn_username,
-                &config.sn_password,
-                &config.sn_instance,
-            );
-            if bin.is_none() {
-                let user_group = sn_client.get_user_group(&config.sn_username).await;
-                if user_group.is_err() {
-                    tracing::error!("Unable to get user group: {:?}", user_group.err());
-                    std::process::exit(2);
-                }
-                config.bin = user_group.unwrap();
-            } else {
-                config.bin = bin.unwrap();
+            run_setup(id, instance, sn_instance, sn_username, sn_password, bin).await;
+        }
+    }
+}
+
+async fn run_timetrack(
+    new: bool,
+    comment: String,
+    time_worked: String,
+    search: Option<String>,
+    bin: Option<String>,
+) {
+    let config = config::Config::from_toml_file();
+    if config.is_err() {
+        tracing::error!(
+            "Unable to load config file. Please run {} and try again.",
+            Colour::Green.bold().paint("elasticnow setup")
+        );
+        std::process::exit(2);
+    }
+    let config = config.unwrap();
+
+    tracing::debug!("New: {:?}", new);
+    tracing::debug!("Comment: {:?}", comment);
+    tracing::debug!("Time Worked: {:?}", time_worked);
+    tracing::debug!("Search: {:?}", search);
+    tracing::debug!("Bin: {:?}", bin);
+    let sn_client = ServiceNow::new(
+        &config.sn_username,
+        &config.sn_password,
+        &config.sn_instance,
+    );
+
+    let sys_id: String;
+    if new {
+        sys_id = new_ticket(&sn_client, &config).await;
+    } else {
+        let ref_str = search.unwrap_or("".to_string());
+        let tkts = vec![&*ref_str];
+        let item = cli::args::choose_options(tkts);
+        tracing::debug!("Selected item: {}", &item);
+        match &*item {
+            "Cancel" => {
+                std::process::exit(0);
             }
-            let toml_resp = config.to_toml_file();
-            if toml_resp.is_err() {
-                tracing::error!("Unable to create config file: {:?}", toml_resp.err());
-                std::process::exit(2);
+            "New ticket" => {
+                sys_id = new_ticket(&sn_client, &config).await;
+            }
+            _ => {
+                sys_id = item.to_string();
             }
         }
     }
+    tracing::debug!("Adding sys_id: {}", sys_id);
+
+    let resp = sn_client
+        .add_time_to_ticket(&sys_id, &time_worked, &comment)
+        .await;
+    if resp.is_err() {
+        tracing::error!("Unable to add time to ticket: {:?}", resp.err());
+        std::process::exit(2);
+    }
+    let time_worked_msg = ansi_term::Colour::Green.paint(time_worked);
+    println!("Tracking {} of time", time_worked_msg);
+    let ticket_url = ansi_term::Colour::Blue.paint(format!(
+        "https://{}.service-now.com/sc_req_item.do?sys_id={}",
+        &config.sn_instance, sys_id
+    ));
+    println!("Link to ticket: {}", ticket_url);
+    std::process::exit(0);
+}
+
+async fn run_setup(
+    id: String,
+    instance: String,
+    sn_instance: String,
+    sn_username: String,
+    sn_password: String,
+    bin: Option<String>,
+) {
+    cli::config::make_dir_if_none();
+    let mut config = cli::config::Config {
+        id,
+        instance,
+        sn_instance,
+        sn_username,
+        sn_password,
+        bin: "".to_string(),
+    };
+    let sn_client = ServiceNow::new(
+        &config.sn_username,
+        &config.sn_password,
+        &config.sn_instance,
+    );
+    if bin.is_none() {
+        let user_group = sn_client.get_user_group(&config.sn_username).await;
+        if user_group.is_err() {
+            tracing::error!("Unable to get user group: {:?}", user_group.err());
+            std::process::exit(2);
+        }
+        config.bin = user_group.unwrap();
+    } else {
+        config.bin = bin.unwrap();
+    }
+    let toml_resp = config.to_toml_file();
+    if toml_resp.is_err() {
+        tracing::error!("Unable to create config file: {:?}", toml_resp.err());
+        std::process::exit(2);
+    }
+}
+
+//Returns the sys_id of new ticket
+async fn new_ticket(sn_client: &ServiceNow, config: &config::Config) -> String {
+    let desc = cli::args::write_short_description();
+    tracing::debug!("Creating new ticket: {}", &desc);
+    let resp = sn_client.create_ticket(&config.bin, &desc).await;
+    if resp.is_err() {
+        tracing::error!("Unable to create ticket: {:?}", resp.err());
+        std::process::exit(2);
+    }
+    let sys_id = resp.unwrap();
+    tracing::info!(
+        "Created ticket: https://{}.service-now.com/sc_req_item.do?sys_id={}",
+        &config.sn_instance,
+        sys_id
+    );
+    return sys_id;
 }

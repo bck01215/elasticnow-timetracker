@@ -15,10 +15,10 @@ pub enum Commands {
     Timetrack {
         #[clap(short, long, conflicts_with = "search", action = clap::ArgAction::SetTrue)]
         /// Creates a new ticket instead of updating an existing one ( cannot be used with --search )
-        new: Option<bool>,
+        new: bool,
         #[clap(short, long)]
         /// Comment for time tracking
-        comment: Option<String>,
+        comment: String,
         #[clap(
             long,
             help = format!("Add time in the format of {} where 1 can be replaced with any number (hours must be less than 24)", Colour::Green.bold().paint("1h1m1s")))
@@ -69,4 +69,11 @@ pub fn choose_options(mut options: Vec<&str>) -> String {
         .unwrap();
 
     options[selection].to_string()
+}
+
+pub fn write_short_description() -> String {
+    dialoguer::Input::<String>::with_theme(&ColorfulTheme::default())
+        .with_prompt("Short description:")
+        .interact()
+        .unwrap()
 }
