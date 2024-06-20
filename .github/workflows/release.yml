@@ -51,16 +51,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ matrix.arch }}-build-cargo-${{ hashFiles('**/Cargo.lock') }}
-
+          key: ${{ matrix.arch }}-build-cargo-${{ hashFiles('**/Cargo.lock') }}      
       - name: Install dependencies for linux
-        if: contains(matrix.arch, 'linux-gnu')
-        run: |
-          sudo apt-get -y update
-          sudo apt-get -y install libssl-dev pkg-config g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
-      
-      - name: Install dependencies for linux
-        if: contains(matrix.arch, 'linux-musl')
+        if: contains(matrix.arch, 'linux')
         run: |
           sudo apt-get -y update
           sudo apt-get -y install libssl-dev pkg-config g++-aarch64-linux-gnu gcc-aarch64-linux-gnu musl-dev musl-tools
