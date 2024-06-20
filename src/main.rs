@@ -1,5 +1,6 @@
 use ansi_term::Colour;
 use elasticnow::cli::{self, config};
+use elasticnow::elasticnow::elasticnow::{ElasticNow, SearchResult};
 use elasticnow::elasticnow::servicenow::ServiceNow;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -62,12 +63,15 @@ async fn run_timetrack(
     );
 
     let sys_id: String;
+    let tkt_bin = bin.unwrap_or(config.bin.clone());
     if new {
         sys_id = new_ticket(&sn_client, &config).await;
     } else {
-        let ref_str = search.unwrap_or("".to_string());
-        let tkts = vec![&*ref_str];
-        let item = cli::args::choose_options(tkts);
+        let es_now_client = ElasticNow::new(&config.id, &config.instance);
+        let keywords = search.clone().unwrap_or("".to_string());
+        let tkt_options = search_tickets(es_now_client, &tkt_bin, &keywords).await;
+        let tkt_options_string = search_results_to_string(&tkt_options);
+        let item = cli::args::choose_options(tkt_options_string);
         tracing::debug!("Selected item: {}", &item);
         match &*item {
             "Cancel" => {
@@ -77,7 +81,12 @@ async fn run_timetrack(
                 sys_id = new_ticket(&sn_client, &config).await;
             }
             _ => {
-                sys_id = item.to_string();
+                let tkt = get_search_result_from_input(&item, tkt_options);
+                if tkt.is_none() {
+                    tracing::error!("Unexpected error on input");
+                    std::process::exit(2);
+                }
+                sys_id = tkt.unwrap().source.id;
             }
         }
     }
@@ -88,12 +97,13 @@ async fn run_timetrack(
         .await;
     if resp.is_err() {
         tracing::error!("Unable to add time to ticket: {:?}", resp.err());
+
         std::process::exit(2);
     }
     let time_worked_msg = ansi_term::Colour::Green.paint(time_worked);
     println!("Tracking {} of time", time_worked_msg);
     let ticket_url = ansi_term::Colour::Blue.paint(format!(
-        "https://{}.service-now.com/sc_req_item.do?sys_id={}",
+        "https://{}.service-now.com/task.do?sys_id={}",
         &config.sn_instance, sys_id
     ));
     println!("Link to ticket: {}", ticket_url);
@@ -155,4 +165,33 @@ async fn new_ticket(sn_client: &ServiceNow, config: &config::Config) -> String {
         sys_id
     );
     return sys_id;
+}
+
+async fn search_tickets(es_now_client: ElasticNow, bin: &str, keywords: &str) -> Vec<SearchResult> {
+    let resp = es_now_client.get_keyword_tickets(keywords, bin).await;
+    if resp.is_err() {
+        tracing::error!("Unable to search tickets: {:?}", resp.err());
+        std::process::exit(2);
+    }
+    resp.unwrap()
+}
+
+fn search_results_to_string(result: &Vec<SearchResult>) -> Vec<String> {
+    let mut string_vec: Vec<String> = Vec::new();
+    for r in result {
+        string_vec.push(format!(
+            "{}: {}",
+            r.source.number, r.source.short_description
+        ));
+    }
+    string_vec
+}
+
+fn get_search_result_from_input(input: &str, result: Vec<SearchResult>) -> Option<SearchResult> {
+    for r in result {
+        if input.starts_with(&r.source.number) {
+            return Some(r);
+        }
+    }
+    None
 }

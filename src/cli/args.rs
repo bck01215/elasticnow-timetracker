@@ -59,8 +59,8 @@ pub fn get_args() -> Args {
     Args::parse()
 }
 
-pub fn choose_options(mut options: Vec<&str>) -> String {
-    options.append(&mut vec!["New ticket", "Cancel"]);
+pub fn choose_options(mut options: Vec<String>) -> String {
+    options.append(&mut vec!["New ticket".to_string(), "Cancel".to_string()]);
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Please choose a ticket:")
         .default(0)
