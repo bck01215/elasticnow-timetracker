@@ -41,6 +41,7 @@ async fn main() {
             sn_instance,
             sn_username,
             sn_password,
+            bin,
         } => {
             cli::config::make_dir_if_none();
             let mut config = cli::config::Config {
@@ -56,13 +57,16 @@ async fn main() {
                 &config.sn_password,
                 &config.sn_instance,
             );
-            let user_group = sn_client.get_user_group(&config.sn_username).await;
-            if user_group.is_err() {
-                tracing::error!("Unable to get user group: {:?}", user_group.err());
-                std::process::exit(2);
+            if bin.is_none() {
+                let user_group = sn_client.get_user_group(&config.sn_username).await;
+                if user_group.is_err() {
+                    tracing::error!("Unable to get user group: {:?}", user_group.err());
+                    std::process::exit(2);
+                }
+                config.bin = user_group.unwrap();
+            } else {
+                config.bin = bin.unwrap();
             }
-            config.bin = user_group.unwrap();
-
             let toml_resp = config.to_toml_file();
             if toml_resp.is_err() {
                 tracing::error!("Unable to create config file: {:?}", toml_resp.err());

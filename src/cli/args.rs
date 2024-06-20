@@ -23,12 +23,12 @@ pub enum Commands {
             long,
             help = format!("Add time in the format of {} where 1 can be replaced with any number (hours must be less than 24)", Colour::Green.bold().paint("1h1m1s")))
         ]
-        time_worked: Option<String>,
+        time_worked: String,
         #[clap(short, long, required_unless_present = "new")]
         /// Keyword search using ElasticNow (returns all tickets in bin by default)
         search: Option<String>,
         #[clap(short, long)]
-        /// Override default bin for searching (defaults to user's assigned bin)
+        /// Override default bin for searching (defaults to user's assigned bin or override in config.toml)
         bin: Option<String>,
     },
 
@@ -49,6 +49,9 @@ pub enum Commands {
         #[clap(long, env = "SN_PASSWORD", hide_env_values = true)]
         /// The ServiceNow Password
         sn_password: String,
+        /// Override default bin for searching (defaults to user's assigned bin)
+        #[clap(short, long)]
+        bin: Option<String>,
     },
 }
 
