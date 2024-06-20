@@ -1,8 +1,10 @@
 use ansi_term::Colour;
 use elasticnow::cli::{self, config};
+use elasticnow::elasticnow::servicenow::ServiceNow;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-fn main() {
+#[tokio::main]
+async fn main() {
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_env("ELASTICNOW_LOG_LEVEL"))
@@ -24,12 +26,14 @@ fn main() {
                 );
                 std::process::exit(2);
             }
-            tracing::info!("Config: {:?}", config);
             tracing::info!("New: {:?}", new);
             tracing::info!("Comment: {:?}", comment);
             tracing::info!("Time Worked: {:?}", time_worked);
             tracing::info!("Search: {:?}", search);
             tracing::info!("Bin: {:?}", bin);
+            let tkts = vec!["TKT2923290", "TKT2923291", "TKT2923292"];
+            let item = cli::args::choose_options(tkts);
+            tracing::info!("Selected item: {:?}", item);
         }
         cli::args::Commands::Setup {
             id,
@@ -39,16 +43,30 @@ fn main() {
             sn_password,
         } => {
             cli::config::make_dir_if_none();
-            let config = cli::config::Config {
+            let mut config = cli::config::Config {
                 id,
                 instance,
                 sn_instance,
                 sn_username,
                 sn_password,
+                bin: "".to_string(),
             };
-            let resp = config.to_toml_file();
-            if resp.is_err() {
-                tracing::error!("Unable to create config file");
+            let sn_client = ServiceNow::new(
+                &config.sn_username,
+                &config.sn_password,
+                &config.sn_instance,
+            );
+            let user_group = sn_client.get_user_group(&config.sn_username).await;
+            if user_group.is_err() {
+                tracing::error!("Unable to get user group: {:?}", user_group.err());
+                std::process::exit(2);
+            }
+            config.bin = user_group.unwrap();
+
+            let toml_resp = config.to_toml_file();
+            if toml_resp.is_err() {
+                tracing::error!("Unable to create config file: {:?}", toml_resp.err());
+                std::process::exit(2);
             }
         }
     }

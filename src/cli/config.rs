@@ -12,6 +12,7 @@ pub struct Config {
     pub sn_instance: String,
     pub sn_username: String,
     pub sn_password: String,
+    pub bin: String,
 }
 
 impl Config {

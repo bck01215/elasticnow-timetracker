@@ -1,6 +1,7 @@
 use crate::cli::config::get_config_dir;
 use ansi_term::Colour;
 use clap::{Parser, Subcommand};
+use dialoguer::{theme::ColorfulTheme, Select};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
@@ -53,4 +54,16 @@ pub enum Commands {
 
 pub fn get_args() -> Args {
     Args::parse()
+}
+
+pub fn choose_options(mut options: Vec<&str>) -> String {
+    options.append(&mut vec!["New ticket", "Cancel"]);
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Please choose a ticket:")
+        .default(0)
+        .items(&options)
+        .interact()
+        .unwrap();
+
+    options[selection].to_string()
 }
