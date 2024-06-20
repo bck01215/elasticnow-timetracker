@@ -2,6 +2,8 @@
 This project was inspired by [Preston Gibbs](mailto:pgibbs1@liberty.edu) and his hate for time tracking.
 
 ## Usage
+### Autocomplete
+`elasticnow --generate   [possible values: bash, elvish, fish, powershell, zsh]` outputs the autocompletion that can be pushed to proper file for autocomplete.
 ### Authentication
 To initialize the repo you will need to run `elasticnow setup`. This will generate a config.toml. The location is dependent on the operating system but can be found at the top of the help output.
 
