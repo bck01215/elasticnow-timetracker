@@ -21,7 +21,7 @@ pub enum Commands {
         comment: String,
         #[clap(
             long,
-            help = format!("Add time in the format of {} where 1 can be replaced with any number (hours must be less than 24)", Colour::Green.bold().paint("1h1m1s")))
+            help = format!("Add time in the format of {} where 1 can be replaced with any number (hours must be less than 24)", Colour::Green.bold().paint("1h1m")))
         ]
         time_worked: String,
         #[clap(short, long, required_unless_present = "new")]
