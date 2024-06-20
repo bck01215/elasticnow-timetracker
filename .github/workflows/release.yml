@@ -12,16 +12,16 @@ jobs:
       matrix:
         include:
           - arch: x86_64-unknown-linux-gnu
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             file_name: elasticnow-${{ github.ref_name }}-linux-amd64
             file_ext: .tar.gz
 
           - arch: x86_64-unknown-linux-musl
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             file_name: elasticnow-${{ github.ref_name }}-linux-amd64-musl
             file_ext: .tar.gz
           - arch: aarch64-unknown-linux-gnu
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             file_name: elasticnow-${{ github.ref_name }}-linux-arm64
             file_ext: .tar.gz
           - arch: x86_64-apple-darwin
@@ -56,7 +56,7 @@ jobs:
         if: contains(matrix.arch, 'linux')
         run: |
           sudo apt-get -y update
-          sudo apt-get -y install libssl-dev pkg-config g++-aarch64-linux-gnu gcc-aarch64-linux-gnu musl-dev musl-tools
+          sudo apt-get -y install --reinstall libssl-dev pkg-config g++-aarch64-linux-gnu gcc-aarch64-linux-gnu musl-dev musl-tools linux-musl-dev binutils-doc gcc-11-locales cpp-doc gcc-11-doc manpages-dev gdb-aarch64-linux-gnu gcc-doc
           sudo ln -s "/usr/bin/g++" "/usr/bin/musl-g++"
 
       - name: Install rust toolchain
