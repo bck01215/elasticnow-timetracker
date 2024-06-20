@@ -1,5 +1,3 @@
-use std::process::exit;
-
 use ansi_term::Colour;
 use elasticnow::cli::{self, config};
 use elasticnow::elasticnow::elasticnow::{ElasticNow, SearchResult};
