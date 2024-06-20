@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
-use toml;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Config {
