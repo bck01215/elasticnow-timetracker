@@ -1,12 +1,18 @@
 use crate::cli::config::get_config_dir;
 use ansi_term::Colour;
-use clap::{Parser, Subcommand};
+use clap::{Command, CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Generator, Shell};
 use dialoguer::{theme::ColorfulTheme, Select};
+use std::io;
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(name = "elasticnow", about = "ElasticNow time tracking CLI", version)]
 pub struct Args {
+    // If provided, outputs the completion file for given shell
+    #[arg(long = "generate", value_enum)]
+    generator: Option<Shell>,
+
     #[command(subcommand)]
-    pub cmd: Commands,
+    pub cmd: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -56,7 +62,13 @@ pub enum Commands {
 }
 
 pub fn get_args() -> Args {
-    Args::parse()
+    let args = Args::parse();
+    if let Some(shell) = args.generator {
+        let mut cmd = Args::command();
+        print_completions(shell, &mut cmd);
+        std::process::exit(0);
+    }
+    args
 }
 
 pub fn choose_options(mut options: Vec<String>) -> String {
@@ -76,4 +88,8 @@ pub fn write_short_description() -> String {
         .with_prompt("Short description:")
         .interact()
         .unwrap()
+}
+
+pub fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
+    generate(gen, cmd, cmd.get_name().to_string(), &mut io::stdout());
 }

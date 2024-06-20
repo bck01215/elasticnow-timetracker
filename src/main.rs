@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use ansi_term::Colour;
 use elasticnow::cli::{self, config};
 use elasticnow::elasticnow::elasticnow::{ElasticNow, SearchResult};
@@ -12,24 +14,27 @@ async fn main() {
         .init();
     let args = cli::args::get_args();
     match args.cmd {
-        cli::args::Commands::Timetrack {
+        Some(cli::args::Commands::Timetrack {
             new,
             comment,
             time_worked,
             search,
             bin,
-        } => {
+        }) => {
             run_timetrack(new, comment, time_worked, search, bin).await;
         }
-        cli::args::Commands::Setup {
+        Some(cli::args::Commands::Setup {
             id,
             instance,
             sn_instance,
             sn_username,
             sn_password,
             bin,
-        } => {
+        }) => {
             run_setup(id, instance, sn_instance, sn_username, sn_password, bin).await;
+        }
+        _ => {
+            std::process::exit(1);
         }
     }
 }
