@@ -1,4 +1,5 @@
 use crate::cli::config::get_config_dir;
+use crate::elasticnow::servicenow_structs::SysIdResult;
 use ansi_term::Colour;
 use clap::{Command, CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Generator, Shell};
@@ -26,6 +27,7 @@ pub enum Commands {
         /// Comment for time tracking
         comment: String,
         #[clap(
+            short,
             long,
             help = format!("Add time in the format of {} where 1 can be replaced with any number (hours must be less than 24)", Colour::Green.bold().paint("1h1m")))
         ]
@@ -33,9 +35,23 @@ pub enum Commands {
         #[clap(short, long, required_unless_present = "new")]
         /// Keyword search using ElasticNow (returns all tickets in bin by default)
         search: Option<String>,
-        #[clap(short, long)]
+        #[clap(short, long, visible_alias = "assignment-group")]
         /// Override default bin for searching (defaults to user's assigned bin or override in config.toml)
         bin: Option<String>,
+    },
+
+    /// Create a std chg using a template
+    StdChg {
+        #[clap(short, long, required_unless_present = "template_id")]
+        /// Search for a STD CHG template to create the CHG with
+        search: Option<String>,
+        #[clap(short, long, visible_alias = "assignment-group")]
+        /// Override default assignment group when creating the CHG
+        bin: Option<String>,
+
+        #[clap(short, long, visible_alias = "sys-id")]
+        /// Use a known template ID to skip the prompt
+        template_id: Option<String>,
     },
 
     #[clap(about = format!("Create a new config file in {}", get_config_dir().display()))]
@@ -92,4 +108,21 @@ pub fn write_short_description() -> String {
 
 pub fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
     generate(gen, cmd, cmd.get_name().to_string(), &mut io::stdout());
+}
+
+// Takes in a list of CHG templates with names and sys_id and returns the sys_id of the chosen template
+pub fn choose_chg_template(chg_templates: Vec<SysIdResult>) -> String {
+    let options: Vec<String> = chg_templates
+        .iter()
+        .map(|t| format!("{}", t.sys_name.as_ref().unwrap()))
+        .collect();
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Please choose a CHG Template:")
+        .default(0)
+        .items(&options)
+        .interact()
+        .unwrap();
+
+    chg_templates[selection].sys_id.clone()
 }

@@ -1,50 +1,13 @@
+use crate::elasticnow::servicenow_structs::{
+    SNResult, SysIdResult, TicketCreation, UserGroupResult,
+};
 use chrono::{TimeZone, Utc};
 use regex::Regex;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tracing::debug;
 
-#[derive(Deserialize)]
-struct SysIdResponse {
-    result: SysIdResult,
-}
-
-#[derive(Deserialize)]
-struct SysIdResult {
-    sys_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct TicketCreation {
-    #[serde(rename = "assignment_group")]
-    pub assignment_group: String,
-    #[serde(rename = "short_description")]
-    pub short_description: String,
-    #[serde(rename = "description")]
-    pub description: String,
-    #[serde(rename = "cmdb_ci", skip_serializing_if = "Option::is_none")]
-    pub configuration_item: Option<String>,
-    #[serde(rename = "sys_class_name", skip_serializing_if = "Option::is_none")]
-    pub type_: Option<String>,
-    #[serde(rename = "priority", skip_serializing_if = "Option::is_none")]
-    pub priority: Option<String>,
-    #[serde(rename = "cat_item", skip_serializing_if = "Option::is_none")]
-    pub item: Option<String>,
-    #[serde(rename = "u_sla_type", skip_serializing_if = "Option::is_none")]
-    pub sla_type: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct UserResponse {
-    pub result: Vec<UserResult>,
-}
-
-#[derive(Debug, Deserialize)]
-struct UserResult {
-    #[serde(rename = "u_default_group")]
-    pub default_group: String,
-}
+use super::servicenow_structs::CHGCreation;
 
 pub struct ServiceNow {
     username: String,
@@ -96,10 +59,9 @@ impl ServiceNow {
             return Err(format!("HTTP Error while querying ServiceNow: {}", resp.status()).into());
         }
 
-        let user_response = resp.json::<UserResponse>().await?;
-        let group = user_response.result.first().unwrap();
+        let user_response = resp.json::<SNResult<Vec<UserGroupResult>>>().await?;
 
-        Ok(group.default_group.clone())
+        Ok(user_response.result[0].default_group.to_owned())
     }
     pub async fn add_time_to_ticket(
         &self,
@@ -148,10 +110,58 @@ impl ServiceNow {
                 json_payload.unwrap(),
             )
             .await?
-            .json::<SysIdResponse>()
+            .json::<SNResult<SysIdResult>>()
             .await?;
 
         Ok(resp.result.sys_id)
+    }
+
+    // Searches for std chgs in ServiceNow
+    pub async fn search_std_chg(&self, name: &str) -> Result<Vec<SysIdResult>, Box<dyn Error>> {
+        let resp = self.get(&format!(
+            "{}/api/now/table/std_change_record_producer?sysparm_query=sys_nameLIKE{}^active=true&sysparm_fields=sys_id,sys_name",
+            self.instance, name
+        )).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP Error while querying ServiceNow: {}", resp.status()).into());
+        }
+        let result = debug_resp_json_deserialize::<SNResult<Vec<SysIdResult>>>(resp).await;
+        if result.is_err() {
+            let error_msg = format!("JSON error: {}", result.unwrap_err());
+            tracing::error!("{}", error_msg);
+            return Err(error_msg.into());
+        }
+        Ok(result.unwrap().result)
+    }
+
+    // Returns the sys_id of created CHG or errors
+    pub async fn create_std_chg_from_template(
+        &self,
+        template_sys_id: &str,
+        assignment_group: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let post_body = serde_json::json!({
+            "assignment_group": assignment_group
+        });
+        let resp = self
+            .post_json(
+                &format!(
+                    "{}/api/sn_chg_rest/change/standard/{}",
+                    self.instance, template_sys_id
+                ),
+                post_body,
+            )
+            .await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP Error while querying ServiceNow: {}", resp.status()).into());
+        }
+        let result = debug_resp_json_deserialize::<SNResult<CHGCreation>>(resp).await;
+        if result.is_err() {
+            let error_msg = format!("JSON error: {}", result.unwrap_err());
+            tracing::error!("{}", error_msg);
+            return Err(error_msg.into());
+        }
+        Ok(result.unwrap().result.sys_id.value)
     }
 }
 
@@ -184,6 +194,17 @@ pub fn time_add_to_epoch(time: &str) -> Result<String, Box<dyn Error>> {
         .format("%Y-%m-%d+%H:%M:%S")
         .to_string();
     Ok(formatted_time)
+}
+
+async fn debug_resp_json_deserialize<T: serde::de::DeserializeOwned + std::fmt::Debug>(
+    resp: reqwest::Response,
+) -> Result<T, Box<dyn Error>> {
+    let text = resp.text().await?;
+    let json: Result<T, serde_json::Error> = serde_json::from_str(&text);
+    if json.is_err() {
+        return Err(format!("JSON error: {} \n{}", json.unwrap_err(), text).into());
+    }
+    Ok(json.unwrap())
 }
 
 #[cfg(test)]

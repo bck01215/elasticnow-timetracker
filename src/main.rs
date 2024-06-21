@@ -31,6 +31,13 @@ async fn main() {
         }) => {
             run_setup(id, instance, sn_instance, sn_username, sn_password, bin).await;
         }
+        Some(cli::args::Commands::StdChg {
+            search,
+            bin,
+            template_id,
+        }) => {
+            run_stdchg(search.unwrap_or_default(), bin, template_id).await;
+        }
         _ => {
             std::process::exit(1);
         }
@@ -44,26 +51,12 @@ async fn run_timetrack(
     search: Option<String>,
     bin: Option<String>,
 ) {
-    let config = config::Config::from_toml_file();
-    if config.is_err() {
-        tracing::error!(
-            "Unable to load config file. Please run {} and try again.",
-            Colour::Green.bold().paint("elasticnow setup")
-        );
-        std::process::exit(2);
-    }
-    let config = config.unwrap();
-
+    let (config, sn_client) = check_config();
     tracing::debug!("New: {:?}", new);
     tracing::debug!("Comment: {:?}", comment);
     tracing::debug!("Time Worked: {:?}", time_worked);
     tracing::debug!("Search: {:?}", search);
     tracing::debug!("Bin: {:?}", bin);
-    let sn_client = ServiceNow::new(
-        &config.sn_username,
-        &config.sn_password,
-        &config.sn_instance,
-    );
 
     let sys_id: String;
     let tkt_bin = bin.unwrap_or(config.bin.clone());
@@ -152,6 +145,47 @@ async fn run_setup(
     }
 }
 
+async fn run_stdchg(search: String, bin: Option<String>, template_id: Option<String>) {
+    let (config, sn_client) = check_config();
+    tracing::debug!("Search: {:?}", search);
+    tracing::debug!("Bin: {:?}", bin);
+    tracing::debug!("Template ID: {:?}", template_id);
+    let bin = bin.unwrap_or(config.bin.clone());
+    let template_sys_id: String;
+    if template_id.is_none() {
+        let std_changes_resp = sn_client.search_std_chg(&search).await;
+        if std_changes_resp.is_err() {
+            tracing::error!("Unable to search std chgs: {:?}", std_changes_resp.err());
+            std::process::exit(2);
+        }
+        let std_changes = std_changes_resp.unwrap();
+        if std_changes.is_empty() {
+            tracing::error!("No std chgs found for search: {}", search);
+            std::process::exit(1);
+        }
+        template_sys_id = cli::args::choose_chg_template(std_changes);
+    } else {
+        template_sys_id = template_id.unwrap();
+    }
+    tracing::debug!("Selected chg_id: {}", template_sys_id);
+    let resp = sn_client
+        .create_std_chg_from_template(&template_sys_id, &bin)
+        .await;
+    if resp.is_err() {
+        tracing::error!("Unable to create std chg: {:?}", resp.err());
+        std::process::exit(2);
+    }
+    let sys_id = resp.unwrap();
+    tracing::info!("Created std chg: {}", sys_id);
+    let ticket_url = ansi_term::Colour::Blue.paint(format!(
+        "https://{}.service-now.com/change_request.do?sys_id={}",
+        &config.sn_instance, sys_id
+    ));
+    println!("Link to CHG: {}", ticket_url);
+
+    std::process::exit(0);
+}
+
 //Returns the sys_id of new ticket
 async fn new_ticket(sn_client: &ServiceNow, config: &config::Config) -> String {
     let desc = cli::args::write_short_description();
@@ -197,4 +231,22 @@ fn get_search_result_from_input(input: &str, result: Vec<SearchResult>) -> Optio
         }
     }
     None
+}
+
+fn check_config() -> (config::Config, ServiceNow) {
+    let config = config::Config::from_toml_file();
+    if config.is_err() {
+        tracing::error!(
+            "Unable to load config file. Please run {} and try again.",
+            Colour::Green.bold().paint("elasticnow setup")
+        );
+        std::process::exit(2);
+    }
+    let config = config.unwrap();
+    let sn_client = ServiceNow::new(
+        &config.sn_username,
+        &config.sn_password,
+        &config.sn_instance,
+    );
+    (config, sn_client)
 }
