@@ -1,3 +1,4 @@
+use crate::elasticnow::servicenow;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
@@ -12,6 +13,7 @@ pub enum ServiceNowResultResponse {
     SysId(SysIdResult),
     SysIds(Vec<SysIdResult>),
     CHG(CHGCreation),
+    TimeWorked(TimeWorked),
 }
 
 #[derive(Deserialize, Debug)]
@@ -55,4 +57,59 @@ pub struct CHGCreation {
 pub struct DisplayAndValue {
     pub display_value: String,
     pub value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LinkAndValue {
+    pub link: String,
+    pub value: String,
+}
+impl LinkAndValue {
+    pub async fn get_link<T: serde::de::DeserializeOwned + std::fmt::Debug>(
+        &self,
+        sn_client: &servicenow::ServiceNow,
+    ) -> Result<T, Box<dyn std::error::Error>> {
+        let resp = sn_client.get(&self.link).await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP Error while querying ServiceNow: {}", resp.status()).into());
+        }
+        let result = servicenow::debug_resp_json_deserialize::<SNResult<T>>(resp).await;
+        if result.is_err() {
+            let error_msg = format!("JSON error: {}", result.unwrap_err());
+            tracing::error!("{}", error_msg);
+            return Err(error_msg.into());
+        }
+        Ok(result.unwrap().result)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum TimeWorkedTask {
+    LinkAndValue(LinkAndValue),
+    EmptyString(String),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TimeWorked {
+    pub time_in_seconds: String,
+    pub task: TimeWorkedTask,
+    #[serde(rename = "u_category")]
+    pub category: String,
+}
+
+impl TimeWorked {
+    pub fn get_nice_name_category(&self) -> String {
+        match self.category.as_str() {
+            "certs_prodev_training" => "Training".to_string(),
+            "clerical" => "Clerical".to_string(),
+            "univ_events" => "University Events".to_string(),
+            _ => self.category.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CostCenter {
+    pub cost_center: DisplayAndValue,
 }

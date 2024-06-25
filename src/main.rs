@@ -1,7 +1,8 @@
 use ansi_term::Colour;
-use elasticnow::cli::{self, config};
+use elasticnow::cli::{self, args, config};
 use elasticnow::elasticnow::elasticnow::{ElasticNow, SearchResult};
 use elasticnow::elasticnow::servicenow::ServiceNow;
+use elasticnow::elasticnow::servicenow_structs::TimeWorkedTask;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
@@ -18,8 +19,17 @@ async fn main() {
             time_worked,
             search,
             bin,
+            no_tkt,
         }) => {
-            run_timetrack(new, comment, time_worked, search, bin).await;
+            run_timetrack(new, comment, time_worked, search, bin, no_tkt).await;
+        }
+
+        Some(cli::args::Commands::StdChg {
+            search,
+            bin,
+            template_id,
+        }) => {
+            run_stdchg(search.unwrap_or_default(), bin, template_id).await;
         }
         Some(cli::args::Commands::Setup {
             id,
@@ -31,12 +41,9 @@ async fn main() {
         }) => {
             run_setup(id, instance, sn_instance, sn_username, sn_password, bin).await;
         }
-        Some(cli::args::Commands::StdChg {
-            search,
-            bin,
-            template_id,
-        }) => {
-            run_stdchg(search.unwrap_or_default(), bin, template_id).await;
+
+        Some(cli::args::Commands::Report { user, since, until }) => {
+            run_report(user, since, until).await;
         }
         _ => {
             std::process::exit(1);
@@ -50,6 +57,7 @@ async fn run_timetrack(
     time_worked: String,
     search: Option<String>,
     bin: Option<String>,
+    no_tkt: bool,
 ) {
     let (config, sn_client) = check_config();
     tracing::debug!("New: {:?}", new);
@@ -58,39 +66,48 @@ async fn run_timetrack(
     tracing::debug!("Search: {:?}", search);
     tracing::debug!("Bin: {:?}", bin);
 
-    let sys_id: String;
     let tkt_bin = bin.unwrap_or(config.bin.clone());
-    if new {
-        sys_id = new_ticket(&sn_client, &config).await;
+    let mut sys_id: String = "".to_string();
+    let resp: Result<(), Box<dyn std::error::Error>>;
+    if no_tkt {
+        let category = cli::args::choose_category();
+        resp = sn_client
+            .add_time_to_no_tkt(&category, &time_worked, &comment)
+            .await;
     } else {
-        let es_now_client = ElasticNow::new(&config.id, &config.instance);
-        let keywords = search.clone().unwrap_or("".to_string());
-        let tkt_options = search_tickets(es_now_client, &tkt_bin, &keywords).await;
-        let tkt_options_string = search_results_to_string(&tkt_options);
-        let item = cli::args::choose_options(tkt_options_string);
-        tracing::debug!("Selected item: {}", &item);
-        match &*item {
-            "Cancel" => {
-                std::process::exit(0);
-            }
-            "New ticket" => {
-                sys_id = new_ticket(&sn_client, &config).await;
-            }
-            _ => {
-                let tkt = get_search_result_from_input(&item, tkt_options);
-                if tkt.is_none() {
-                    tracing::error!("Unexpected error on input");
-                    std::process::exit(2);
+        if new {
+            sys_id = new_ticket(&sn_client, &config).await;
+        } else {
+            let es_now_client = ElasticNow::new(&config.id, &config.instance);
+            let keywords = search.clone().unwrap_or("".to_string());
+            let tkt_options = search_tickets(es_now_client, &tkt_bin, &keywords).await;
+            let tkt_options_string = search_results_to_string(&tkt_options);
+            let item = cli::args::choose_options(tkt_options_string);
+            tracing::debug!("Selected item: {}", &item);
+            match &*item {
+                "Cancel" => {
+                    std::process::exit(0);
                 }
-                sys_id = tkt.unwrap().source.id;
+                "New ticket" => {
+                    sys_id = new_ticket(&sn_client, &config).await;
+                }
+                _ => {
+                    let tkt = get_search_result_from_input(&item, tkt_options);
+                    if tkt.is_none() {
+                        tracing::error!("Unexpected error on input");
+                        std::process::exit(2);
+                    }
+                    sys_id = tkt.unwrap().source.id;
+                }
             }
         }
-    }
-    tracing::debug!("Adding sys_id: {}", sys_id);
+        tracing::debug!("Adding sys_id: {}", sys_id);
 
-    let resp = sn_client
-        .add_time_to_ticket(&sys_id, &time_worked, &comment)
-        .await;
+        resp = sn_client
+            .add_time_to_ticket(&sys_id, &time_worked, &comment)
+            .await;
+    }
+
     if resp.is_err() {
         tracing::error!("Unable to add time to ticket: {:?}", resp.err());
 
@@ -98,14 +115,53 @@ async fn run_timetrack(
     }
     let time_worked_msg = ansi_term::Colour::Green.paint(time_worked);
     println!("Tracking {} of time", time_worked_msg);
-    let ticket_url = ansi_term::Colour::Blue.paint(format!(
-        "https://{}.service-now.com/task.do?sys_id={}",
-        &config.sn_instance, sys_id
-    ));
-    println!("Link to ticket: {}", ticket_url);
+    if !no_tkt {
+        let ticket_url = ansi_term::Colour::Blue.paint(format!(
+            "https://{}.service-now.com/task.do?sys_id={}",
+            &config.sn_instance, sys_id
+        ));
+        println!("Link to ticket: {}", ticket_url);
+    }
     std::process::exit(0);
 }
 
+async fn run_report(user: Option<String>, since: Option<String>, until: Option<String>) {
+    let (config, sn_client) = check_config();
+    let user = user.unwrap_or(config.sn_username.clone());
+    let since = since.unwrap_or(args::get_week_start());
+    let until = until.unwrap_or(args::get_today());
+    for date in vec![&since, &until] {
+        let date_validate = args::range_format_validate(date);
+        if date_validate.is_err() {
+            tracing::error!("Invalid date format: {:?}", date_validate.err());
+            std::process::exit(2);
+        }
+    }
+    let tasks = sn_client.get_user_time_worked(&since, &until, &user).await;
+    if tasks.is_err() {
+        tracing::error!("Unable to get time worked: {:?}", tasks.err());
+        std::process::exit(2);
+    }
+    let tasks = tasks.unwrap();
+    for time_work in tasks {
+        match time_work.task {
+            TimeWorkedTask::LinkAndValue(link_and_value) => {
+                println!(
+                    "Time worked seconds: {} {}",
+                    time_work.time_in_seconds, link_and_value.link
+                );
+            }
+            TimeWorkedTask::EmptyString(_) => {
+                println!(
+                    "Time worked seconds: {} {}",
+                    time_work.time_in_seconds,
+                    time_work.get_nice_name_category()
+                );
+            }
+        }
+    }
+    std::process::exit(0);
+}
 async fn run_setup(
     id: String,
     instance: String,

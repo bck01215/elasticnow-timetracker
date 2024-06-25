@@ -1,6 +1,6 @@
 # ElasticNow CLI
 
-This project was inspired by [Preston Gibbs](mailto:pgibbs1@liberty.edu) and his hate for time tracking.
+This project simplifies timetracking in servicenow for those who find it difficult to navigate.
 
 ## Usage
 

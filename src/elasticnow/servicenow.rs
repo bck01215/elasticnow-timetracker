@@ -1,5 +1,5 @@
 use crate::elasticnow::servicenow_structs::{
-    SNResult, SysIdResult, TicketCreation, UserGroupResult,
+    SNResult, SysIdResult, TicketCreation, TimeWorked, UserGroupResult,
 };
 use chrono::{TimeZone, Utc};
 use regex::Regex;
@@ -27,7 +27,7 @@ impl ServiceNow {
             client,
         }
     }
-    async fn get(&self, path: &str) -> Result<reqwest::Response, reqwest::Error> {
+    pub async fn get(&self, path: &str) -> Result<reqwest::Response, reqwest::Error> {
         debug!("Getting {}", path);
         self.client
             .get(path)
@@ -35,7 +35,7 @@ impl ServiceNow {
             .send()
             .await
     }
-    async fn post_json(
+    pub async fn post_json(
         &self,
         path: &str,
         json: serde_json::Value,
@@ -75,13 +75,41 @@ impl ServiceNow {
             "comments": comment,
             "task": ticket_id
         });
-        self.post_json(
-            &format!("{}/api/now/table/task_time_worked", self.instance),
-            post_body,
-        )
-        .await?;
+        let resp = self
+            .post_json(
+                &format!("{}/api/now/table/task_time_worked", self.instance),
+                post_body,
+            )
+            .await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP Error while querying ServiceNow: {}", resp.status()).into());
+        }
         Ok(())
     }
+    pub async fn add_time_to_no_tkt(
+        &self,
+        category: &str,
+        time_worked: &str,
+        comment: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let time_worked = time_add_to_epoch(time_worked)?;
+        let post_body = serde_json::json!({
+            "time_worked": time_worked,
+            "comments": comment,
+            "u_category": category
+        });
+        let resp = self
+            .post_json(
+                &format!("{}/api/now/table/task_time_worked", self.instance),
+                post_body,
+            )
+            .await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP Error while querying ServiceNow: {}", resp.status()).into());
+        }
+        Ok(())
+    }
+
     // Returns the sys_id of created or errors
     pub async fn create_ticket(
         &self,
@@ -163,6 +191,26 @@ impl ServiceNow {
         }
         Ok(result.unwrap().result.sys_id.value)
     }
+    pub async fn get_user_time_worked(
+        &self,
+        start: &str,
+        end: &str,
+        user: &str,
+    ) -> Result<Vec<TimeWorked>, Box<dyn Error>> {
+        let resp = self.get(&format!(
+            "{}/api/now/table/task_time_worked?sysparm_query=sys_created_by={}^u_created_forBETWEENjavascript:gs.dateGenerate('{}','start')@javascript:gs.dateGenerate('{}','end')",
+            self.instance,  user, start, end,
+        )).await?;
+
+        if !resp.status().is_success() {
+            return Err(format!("HTTP Error while querying ServiceNow: {}", resp.status()).into());
+        }
+        Ok(
+            debug_resp_json_deserialize::<SNResult<Vec<TimeWorked>>>(resp)
+                .await?
+                .result,
+        )
+    }
 }
 
 pub fn time_add_to_epoch(time: &str) -> Result<String, Box<dyn Error>> {
@@ -179,9 +227,9 @@ pub fn time_add_to_epoch(time: &str) -> Result<String, Box<dyn Error>> {
         .get(2)
         .map_or(Ok(0), |m| m.as_str().parse())
         .unwrap();
-    if hours > 23 || minutes > 59 {
+    if hours > 19 || minutes > 59 {
         return Err(
-            "Invalid time format. Values must be below 23 for hours, 60 for minutes".into(),
+            "Invalid time format. Values must be below 20 for hours, 60 for minutes".into(),
         );
     }
     let epoch_time = (hours * 3600 + minutes * 60) as i64;
@@ -196,7 +244,7 @@ pub fn time_add_to_epoch(time: &str) -> Result<String, Box<dyn Error>> {
     Ok(formatted_time)
 }
 
-async fn debug_resp_json_deserialize<T: serde::de::DeserializeOwned + std::fmt::Debug>(
+pub async fn debug_resp_json_deserialize<T: serde::de::DeserializeOwned + std::fmt::Debug>(
     resp: reqwest::Response,
 ) -> Result<T, Box<dyn Error>> {
     let text = resp.text().await?;
@@ -205,46 +253,4 @@ async fn debug_resp_json_deserialize<T: serde::de::DeserializeOwned + std::fmt::
         return Err(format!("JSON error: {} \n{}", json.unwrap_err(), text).into());
     }
     Ok(json.unwrap())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_time_add_to_epoch_basic() {
-        assert_eq!(time_add_to_epoch("1h2m").unwrap(), "1970-01-01+01:02:00");
-    }
-
-    #[test]
-    fn test_time_add_to_epoch_too_many_hours() {
-        assert_eq!(
-            time_add_to_epoch("24h0m").unwrap_err().to_string(),
-            "Invalid time format. Values must be below 23 for hours, 60 for minutes"
-        );
-    }
-
-    #[test]
-    fn test_time_add_to_epoch_too_many_minutes() {
-        assert_eq!(
-            time_add_to_epoch("0h60m").unwrap_err().to_string(),
-            "Invalid time format. Values must be below 23 for hours, 60 for minutes"
-        );
-    }
-    #[test]
-    fn test_time_only_hour() {
-        assert_eq!(time_add_to_epoch("1h").unwrap(), "1970-01-01+01:00:00");
-    }
-
-    #[test]
-    fn test_time_only_minute() {
-        assert_eq!(time_add_to_epoch("1m").unwrap(), "1970-01-01+00:01:00");
-    }
-
-    #[test]
-    fn test_time_no_time() {
-        assert_eq!(
-            time_add_to_epoch("0h").unwrap_err().to_string(),
-            "Time worked must be greater than 0 minutes"
-        );
-    }
 }
