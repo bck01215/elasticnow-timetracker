@@ -28,6 +28,24 @@ pub struct Ticket {
     pub type_: String,
 }
 
+impl ChooseOptions<SearchResult> for SearchResult {
+    fn get_debug_string(&self) -> String {
+        format!("{}: {}", self.source.number, self.source.short_description)
+    }
+    fn get_number(&self) -> String {
+        self.source.number.clone()
+    }
+    fn get_id(&self) -> String {
+        self.source.id.clone()
+    }
+}
+
+pub trait ChooseOptions<T> {
+    fn get_debug_string(&self) -> String;
+    fn get_id(&self) -> String;
+    fn get_number(&self) -> String;
+}
+
 pub struct ElasticNow {
     instance: String,
     pub client: Client,

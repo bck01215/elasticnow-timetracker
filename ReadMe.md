@@ -33,6 +33,7 @@ When searching, the CLI will return a list for the user to choose from after que
 | Flag                          | Description                                                                                         |
 | ----------------------------- | --------------------------------------------------------------------------------------------------- |
 | `-n, --new`                   | Creates a new ticket instead of updating an existing one ( cannot be used with `--search` )         |
+| `-a, --all`                   | Returns all item in the bin instead of searching                                                    |
 | `-c, --comment <COMMENT>`     | Comment for time tracking                                                                           |
 | `--time-worked <TIME_WORKED>` | Add time in the format of 1h1m where 1 can be replaced with any number (hours must be less than 24) |
 | `-s, --search <SEARCH>`       | Keyword search using ElasticNow (returns all tickets in bin by default)                             |

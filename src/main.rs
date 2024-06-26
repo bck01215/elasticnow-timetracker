@@ -1,9 +1,16 @@
 use ansi_term::Colour;
 use elasticnow::cli::{self, args, config};
+use elasticnow::elasticnow::elasticnow::ChooseOptions;
 use elasticnow::elasticnow::elasticnow::{ElasticNow, SearchResult};
 use elasticnow::elasticnow::servicenow::ServiceNow;
 use std::collections::HashMap;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+struct ValueOption {
+    value: String,
+    display_value: String,
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
@@ -19,8 +26,9 @@ async fn main() {
             search,
             bin,
             no_tkt,
+            all,
         }) => {
-            run_timetrack(new, comment, time_worked, search, bin, no_tkt).await;
+            run_timetrack(new, comment, time_worked, search, bin, no_tkt, all).await;
         }
 
         Some(cli::args::Commands::StdChg {
@@ -62,6 +70,7 @@ async fn run_timetrack(
     search: Option<String>,
     bin: Option<String>,
     no_tkt: bool,
+    all: bool,
 ) {
     let (config, sn_client) = check_config();
     tracing::debug!("New: {:?}", new);
@@ -82,10 +91,24 @@ async fn run_timetrack(
         if new {
             sys_id = new_ticket(&sn_client, &config).await;
         } else {
-            let es_now_client = ElasticNow::new(&config.id, &config.instance);
-            let keywords = search.clone().unwrap_or("".to_string());
-            let tkt_options = search_tickets(es_now_client, &tkt_bin, &keywords).await;
-            let tkt_options_string = search_results_to_string(&tkt_options);
+            let tkt_options_string: Vec<String>;
+            let tkt_options: Vec<ValueOption>;
+            if all {
+                let tkt_options_res = sn_client.get_all_tickets_in_bin(&tkt_bin).await;
+                if tkt_options_res.is_err() {
+                    tracing::error!("Unable to get tickets: {:?}", tkt_options_res.err());
+                    std::process::exit(2);
+                }
+                let tkt_options_generic = tkt_options_res.unwrap();
+                tkt_options = generic_options_to_value_option(&tkt_options_generic);
+                tkt_options_string = search_results_to_string(&tkt_options_generic);
+            } else {
+                let es_now_client = ElasticNow::new(&config.id, &config.instance);
+                let keywords = search.clone().unwrap_or("".to_string());
+                let tkt_options_generic = search_tickets(es_now_client, &tkt_bin, &keywords).await;
+                tkt_options = generic_options_to_value_option(&tkt_options_generic);
+                tkt_options_string = search_results_to_string(&tkt_options_generic);
+            }
             let item = cli::args::choose_options(tkt_options_string);
             tracing::debug!("Selected item: {}", &item);
             match &*item {
@@ -101,7 +124,7 @@ async fn run_timetrack(
                         tracing::error!("Unexpected error on input");
                         std::process::exit(2);
                     }
-                    sys_id = tkt.unwrap().source.id;
+                    sys_id = tkt.unwrap().value;
                 }
             }
         }
@@ -291,20 +314,29 @@ async fn search_tickets(es_now_client: ElasticNow, bin: &str, keywords: &str) ->
     resp.unwrap()
 }
 
-fn search_results_to_string(result: &Vec<SearchResult>) -> Vec<String> {
+fn generic_options_to_value_option<T: ChooseOptions<T>>(result: &Vec<T>) -> Vec<ValueOption> {
+    let mut value_vec: Vec<ValueOption> = Vec::new();
+    for r in result {
+        let val_opt = ValueOption {
+            display_value: r.get_number(),
+            value: r.get_id(),
+        };
+        value_vec.push(val_opt);
+    }
+    value_vec
+}
+
+fn search_results_to_string<T: ChooseOptions<T>>(result: &Vec<T>) -> Vec<String> {
     let mut string_vec: Vec<String> = Vec::new();
     for r in result {
-        string_vec.push(format!(
-            "{}: {}",
-            r.source.number, r.source.short_description
-        ));
+        string_vec.push(r.get_debug_string());
     }
     string_vec
 }
 
-fn get_search_result_from_input(input: &str, result: Vec<SearchResult>) -> Option<SearchResult> {
+fn get_search_result_from_input(input: &str, result: Vec<ValueOption>) -> Option<ValueOption> {
     for r in result {
-        if input.starts_with(&r.source.number) {
+        if input.starts_with(&r.display_value) {
             return Some(r);
         }
     }

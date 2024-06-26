@@ -21,9 +21,13 @@ pub struct Args {
 pub enum Commands {
     /// Run time tracking options utilizing ElasticNow and ServiceNow
     Timetrack {
-        #[clap(short, long, conflicts_with_all = ["search","no_tkt"], action = clap::ArgAction::SetTrue)]
+        #[clap(short, long, conflicts_with_all = ["search","no_tkt", "all"], action = clap::ArgAction::SetTrue)]
         /// Creates a new ticket instead of updating an existing one ( cannot be used with --search )
         new: bool,
+        #[clap(short, long, conflicts_with_all = ["search","no_tkt"], action = clap::ArgAction::SetTrue)]
+        /// Returns all item in the bin instead of searching
+        all: bool,
+
         #[clap(short, long)]
         /// Comment for time tracking
         comment: String,
@@ -33,7 +37,7 @@ pub enum Commands {
             help = format!("Add time in the format of {} where 1 can be replaced with any number (hours must be less than 20)", Colour::Green.bold().paint("1h1m")))
         ]
         time_worked: String,
-        #[clap(short, long, required_unless_present_any = ["new", "no_tkt"])]
+        #[clap(short, long, required_unless_present_any = ["new", "no_tkt", "all"])]
         /// Keyword search using ElasticNow (returns all tickets in bin by default)
         search: Option<String>,
         #[clap(short, long, visible_alias = "assignment-group")]

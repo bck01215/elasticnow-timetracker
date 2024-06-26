@@ -7,7 +7,7 @@ use reqwest::Client;
 use std::error::Error;
 use tracing::debug;
 
-use super::servicenow_structs::CHGCreation;
+use super::servicenow_structs::{CHGCreation, ShortDescNumberID};
 
 pub struct ServiceNow {
     username: String,
@@ -47,6 +47,27 @@ impl ServiceNow {
             .basic_auth(&self.username, Some(&self.password))
             .send()
             .await
+    }
+    pub async fn get_all_tickets_in_bin(
+        &self,
+        bin: &str,
+    ) -> Result<Vec<ShortDescNumberID>, Box<dyn Error>> {
+        let resp = self
+            .get(&format!(
+                "{}/api/now/table/task?sysparm_fields=sys_id,short_description,number,assignment_group&sysparm_query=active=true^assignment_group.name={}",
+                self.instance, bin
+            ))
+            .await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP Error while querying ServiceNow: {}", resp.status()).into());
+        }
+        let result = debug_resp_json_deserialize::<SNResult<Vec<ShortDescNumberID>>>(resp).await;
+        if result.is_err() {
+            let error_msg = format!("JSON error: {}", result.unwrap_err());
+            tracing::error!("{}", error_msg);
+            return Err(error_msg.into());
+        }
+        Ok(result.unwrap().result)
     }
     pub async fn get_user_group(&self, username: &str) -> Result<String, Box<dyn Error>> {
         let resp = self.get(&format!(

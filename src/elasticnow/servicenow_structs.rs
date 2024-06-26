@@ -1,3 +1,4 @@
+use crate::elasticnow::elasticnow::ChooseOptions;
 use crate::elasticnow::servicenow;
 use serde::{Deserialize, Serialize};
 
@@ -111,6 +112,25 @@ impl TimeWorked {
             "univ_events" => "University Events".to_string(),
             _ => self.category.clone(),
         }
+    }
+}
+#[derive(Debug, Serialize, Deserialize)]
+
+pub struct ShortDescNumberID {
+    pub short_description: String,
+    pub number: String,
+    pub sys_id: String,
+}
+
+impl ChooseOptions<ShortDescNumberID> for ShortDescNumberID {
+    fn get_debug_string(&self) -> String {
+        format!("{}: {}", self.number, self.short_description)
+    }
+    fn get_number(&self) -> String {
+        self.number.clone()
+    }
+    fn get_id(&self) -> String {
+        self.sys_id.clone()
     }
 }
 
