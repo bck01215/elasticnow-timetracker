@@ -37,6 +37,7 @@ When searching, the CLI will return a list for the user to choose from after que
 | `--time-worked <TIME_WORKED>` | Add time in the format of 1h1m where 1 can be replaced with any number (hours must be less than 24) |
 | `-s, --search <SEARCH>`       | Keyword search using ElasticNow (returns all tickets in bin by default)                             |
 | `-b, --bin <BIN>`             | Override default bin for searching (defaults to user's assigned bin or override in config.toml)     |
+| `--no-tkt`                    | Uses timetracking without a ticket                                                                  |
 | `-h, --help`                  | Print help                                                                                          |
 
 Usage: `elasticnow timetrack [OPTIONS] --comment <COMMENT> --time-worked <TIME_WORKED> --search <SEARCH>`
@@ -54,3 +55,18 @@ Options:
 | `-h, --help` | Print help |
 
 Usage: `elasticnow std-chg [OPTIONS]`
+
+### Report
+
+This gets the user's current time tracking and returns the `--top` results and total time tracking for the range. The duration flags (`--since` and `--until`) default to the current work week. If total is below 32 hours it will return red
+
+Options:
+| Flag | Description |
+| --- | --- |
+| `-u, --user <USER>` | Override the default user in the report |
+| `--since <SINCE>` | Start date of search (defaults to 2024-06-24) |
+| `--until <UNTIL>` | End date of search (defaults to 2024-06-26) |
+| `-t, --top <TOP>` | Limit the number of cost centers returned in the report. Any extra fields will be grouped into other [default: 10]|
+| `-h, --help` | Print help |
+
+Usage: `elasticnow report [OPTIONS]`

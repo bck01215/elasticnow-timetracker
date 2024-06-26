@@ -2,9 +2,8 @@ use ansi_term::Colour;
 use elasticnow::cli::{self, args, config};
 use elasticnow::elasticnow::elasticnow::{ElasticNow, SearchResult};
 use elasticnow::elasticnow::servicenow::ServiceNow;
-use elasticnow::elasticnow::servicenow_structs::TimeWorkedTask;
+use std::collections::HashMap;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
@@ -42,8 +41,13 @@ async fn main() {
             run_setup(id, instance, sn_instance, sn_username, sn_password, bin).await;
         }
 
-        Some(cli::args::Commands::Report { user, since, until }) => {
-            run_report(user, since, until).await;
+        Some(cli::args::Commands::Report {
+            user,
+            since,
+            until,
+            top,
+        }) => {
+            run_report(user, since, until, top).await;
         }
         _ => {
             std::process::exit(1);
@@ -125,7 +129,12 @@ async fn run_timetrack(
     std::process::exit(0);
 }
 
-async fn run_report(user: Option<String>, since: Option<String>, until: Option<String>) {
+async fn run_report(
+    user: Option<String>,
+    since: Option<String>,
+    until: Option<String>,
+    top: Option<usize>,
+) {
     let (config, sn_client) = check_config();
     let user = user.unwrap_or(config.sn_username.clone());
     let since = since.unwrap_or(args::get_week_start());
@@ -134,32 +143,45 @@ async fn run_report(user: Option<String>, since: Option<String>, until: Option<S
         let date_validate = args::range_format_validate(date);
         if date_validate.is_err() {
             tracing::error!("Invalid date format: {:?}", date_validate.err());
-            std::process::exit(2);
+            std::process::exit(1);
         }
     }
     let tasks = sn_client.get_user_time_worked(&since, &until, &user).await;
     if tasks.is_err() {
         tracing::error!("Unable to get time worked: {:?}", tasks.err());
-        std::process::exit(2);
+        std::process::exit(1);
     }
+    let mut task_cat_time: HashMap<String, i64> = HashMap::new();
     let tasks = tasks.unwrap();
+    let mut tasks_ids: HashMap<String, i64> = HashMap::new();
     for time_work in tasks {
-        match time_work.task {
-            TimeWorkedTask::LinkAndValue(link_and_value) => {
-                println!(
-                    "Time worked seconds: {} {}",
-                    time_work.time_in_seconds, link_and_value.link
-                );
+        match time_work.task.as_ref() {
+            "" => {
+                let time_in_seconds: i64 = time_work.time_in_seconds.parse().unwrap_or_default();
+                *task_cat_time
+                    .entry(time_work.get_nice_name_category())
+                    .or_insert(0) += time_in_seconds;
             }
-            TimeWorkedTask::EmptyString(_) => {
-                println!(
-                    "Time worked seconds: {} {}",
-                    time_work.time_in_seconds,
-                    time_work.get_nice_name_category()
-                );
+            _ => {
+                let time_in_seconds: i64 = time_work.time_in_seconds.parse().unwrap_or_default();
+                *tasks_ids.entry(time_work.task).or_insert(0) += time_in_seconds;
             }
         }
     }
+    let keys = tasks_ids.keys().cloned().collect::<Vec<String>>();
+    let cost_centers = sn_client.get_tasks_cost_centers(&keys).await;
+    if cost_centers.is_err() {
+        tracing::error!("Unable to get cost centers: {:?}", cost_centers.err());
+        std::process::exit(1);
+    }
+    let cost_centers = cost_centers.unwrap();
+    for cost_center in cost_centers {
+        let time = tasks_ids.get(&cost_center.task.value).unwrap_or(&0);
+        *task_cat_time
+            .entry(cost_center.cost_center.display_value)
+            .or_insert(0) += time;
+    }
+    args::pretty_print_time_worked(task_cat_time, top.unwrap_or(10));
     std::process::exit(0);
 }
 async fn run_setup(

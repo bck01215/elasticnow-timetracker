@@ -58,6 +58,11 @@ pub struct DisplayAndValue {
     pub display_value: String,
     pub value: String,
 }
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DisplayAndLink {
+    pub display_value: String,
+    pub link: String,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LinkAndValue {
@@ -86,14 +91,14 @@ impl LinkAndValue {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum TimeWorkedTask {
-    LinkAndValue(LinkAndValue),
+    DisplayAndValue(DisplayAndValue),
     EmptyString(String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TimeWorked {
     pub time_in_seconds: String,
-    pub task: TimeWorkedTask,
+    pub task: String,
     #[serde(rename = "u_category")]
     pub category: String,
 }
@@ -112,4 +117,5 @@ impl TimeWorked {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CostCenter {
     pub cost_center: DisplayAndValue,
+    pub task: DisplayAndValue,
 }

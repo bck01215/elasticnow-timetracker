@@ -1,5 +1,5 @@
 use crate::elasticnow::servicenow_structs::{
-    SNResult, SysIdResult, TicketCreation, TimeWorked, UserGroupResult,
+    CostCenter, SNResult, SysIdResult, TicketCreation, TimeWorked, UserGroupResult,
 };
 use chrono::{TimeZone, Utc};
 use regex::Regex;
@@ -198,7 +198,7 @@ impl ServiceNow {
         user: &str,
     ) -> Result<Vec<TimeWorked>, Box<dyn Error>> {
         let resp = self.get(&format!(
-            "{}/api/now/table/task_time_worked?sysparm_query=sys_created_by={}^u_created_forBETWEENjavascript:gs.dateGenerate('{}','start')@javascript:gs.dateGenerate('{}','end')",
+            "{}/api/now/table/task_time_worked?sysparm_fields=task,time_in_seconds,u_category&sysparm_exclude_reference_link=true&sysparm_query=sys_created_by={}^u_created_forBETWEENjavascript:gs.dateGenerate('{}','start')@javascript:gs.dateGenerate('{}','end')",
             self.instance,  user, start, end,
         )).await?;
 
@@ -207,6 +207,24 @@ impl ServiceNow {
         }
         Ok(
             debug_resp_json_deserialize::<SNResult<Vec<TimeWorked>>>(resp)
+                .await?
+                .result,
+        )
+    }
+    pub async fn get_tasks_cost_centers(
+        &self,
+        task_sys_id: &Vec<String>,
+    ) -> Result<Vec<CostCenter>, Box<dyn Error>> {
+        let task_sys_ids = task_sys_id.join("^ORtask=");
+        let resp = self.get(
+            &format!("{}/api/now/table/task_cost_center?sysparm_query=task={}&sysparm_display_value=all&sysparm_exclude_reference_link=true&sysparm_fields=task,cost_center", self.instance, task_sys_ids),
+        ).await?;
+
+        if !resp.status().is_success() {
+            return Err(format!("HTTP Error while querying ServiceNow: {}", resp.status()).into());
+        }
+        Ok(
+            debug_resp_json_deserialize::<SNResult<Vec<CostCenter>>>(resp)
                 .await?
                 .result,
         )

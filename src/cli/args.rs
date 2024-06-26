@@ -5,7 +5,7 @@ use chrono::{Datelike, Local};
 use clap::{Command, CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Generator, Shell};
 use dialoguer::{theme::ColorfulTheme, Select};
-use std::io;
+use std::{collections::HashMap, io};
 #[derive(Parser)]
 #[command(name = "elasticnow", about = "ElasticNow time tracking CLI", version)]
 pub struct Args {
@@ -53,6 +53,10 @@ pub enum Commands {
         since: Option<String>,
         #[clap(long, help = format!("End date of search (defaults to {})", get_today()))]
         until: Option<String>,
+
+        #[clap(short, long, default_value = "10")]
+        /// Limit the number of cost centers returned in the report. Any extra fields will be grouped into other
+        top: Option<usize>,
     },
 
     /// Create a std chg using a template
@@ -192,4 +196,51 @@ pub fn get_week_start() -> String {
         now.month(),
         now.day() - now.weekday().num_days_from_monday()
     )
+}
+
+pub fn pretty_print_time_worked(time_worked: HashMap<String, i64>, top: usize) {
+    let total: i64 = time_worked.values().sum();
+    let human_total = seconds_to_pretty(total);
+    let total_str = ansi_term::Colour::Blue.bold().paint("Total:").to_string();
+    let top_ten = group_top_x(time_worked, top);
+    let mut sorted_top_ten: Vec<_> = top_ten.into_iter().collect();
+    sorted_top_ten.sort_by(|a, b| a.1.cmp(&b.1));
+    for (k, v) in sorted_top_ten {
+        println!(
+            "{}: {}",
+            ansi_term::Colour::Purple.italic().paint(k),
+            seconds_to_pretty(v)
+        );
+    }
+    if total < 3600 * 32 {
+        println!(
+            "{}: {}",
+            total_str,
+            ansi_term::Colour::Red.bold().paint(human_total)
+        );
+    } else {
+        println!(
+            "{}: {}",
+            total_str,
+            ansi_term::Colour::Green.bold().paint(human_total)
+        );
+    }
+}
+
+fn seconds_to_pretty(seconds: i64) -> String {
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let seconds = seconds % 60;
+    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
+fn group_top_x(hash_map: HashMap<String, i64>, x: usize) -> HashMap<String, i64> {
+    let mut sorted_hash_map = hash_map.into_iter().collect::<Vec<(String, i64)>>();
+    sorted_hash_map.sort_by(|a, b| b.1.cmp(&a.1));
+    let other_total = sorted_hash_map.iter().skip(x).map(|x| x.1).sum();
+    let mut ret_map: HashMap<String, i64> = sorted_hash_map.into_iter().take(x).collect();
+    if other_total > 0 {
+        ret_map.insert("Other".to_string(), other_total);
+    }
+    ret_map
 }
