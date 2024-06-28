@@ -3,6 +3,7 @@ use elasticnow::cli::{self, args, config};
 use elasticnow::elasticnow::elasticnow::ChooseOptions;
 use elasticnow::elasticnow::elasticnow::{ElasticNow, SearchResult};
 use elasticnow::elasticnow::servicenow::ServiceNow;
+use elasticnow::elasticnow::servicenow_structs::TimeWorked;
 use std::collections::HashMap;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -176,6 +177,7 @@ async fn run_report(
     }
     let mut task_cat_time: HashMap<String, i64> = HashMap::new();
     let tasks = tasks.unwrap();
+    let total = get_total(&tasks);
     let mut tasks_ids: HashMap<String, i64> = HashMap::new();
     for time_work in tasks {
         match time_work.task.as_ref() {
@@ -204,7 +206,7 @@ async fn run_report(
             .entry(cost_center.cost_center.display_value)
             .or_insert(0) += time;
     }
-    args::pretty_print_time_worked(task_cat_time, top.unwrap_or(10));
+    args::pretty_print_time_worked(task_cat_time, top.unwrap_or(10), total);
     std::process::exit(0);
 }
 async fn run_setup(
@@ -359,4 +361,11 @@ fn check_config() -> (config::Config, ServiceNow) {
         &config.sn_instance,
     );
     (config, sn_client)
+}
+
+fn get_total(tasks: &Vec<TimeWorked>) -> i64 {
+    tasks
+        .iter()
+        .map(|t| t.time_in_seconds.parse::<i64>().unwrap_or_default())
+        .sum()
 }

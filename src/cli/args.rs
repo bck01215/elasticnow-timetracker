@@ -202,8 +202,7 @@ pub fn get_week_start() -> String {
     )
 }
 
-pub fn pretty_print_time_worked(time_worked: HashMap<String, i64>, top: usize) {
-    let total: i64 = time_worked.values().sum();
+pub fn pretty_print_time_worked(time_worked: HashMap<String, i64>, top: usize, total: i64) {
     let human_total = seconds_to_pretty(total);
     let total_str = ansi_term::Colour::Blue.bold().paint("Total:").to_string();
     let top_ten = group_top_x(time_worked, top);
