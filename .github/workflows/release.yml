@@ -60,21 +60,29 @@ jobs:
           sudo ln -s "/usr/bin/g++" "/usr/bin/musl-g++"
 
       - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           target: ${{ matrix.arch }}
-          override: true
 
       - name: Output package versions
         run: |
           cargo version ; rustc --version ; gcc --version ; g++ --version
 
+      - name: Install cross
+        if: contains(matrix.arch, 'linux')
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
       - name: Print rustc cfg
         run: rustc -C target-cpu=native --print cfg
 
       - name: Run cargo build
+        if: contains(matrix.arch, 'linux') == false
         run: cargo build  --release  --target ${{ matrix.arch }}
+
+      - name: Run cross build
+        if: contains(matrix.arch, 'linux')
+        run: cross build --release --target ${{ matrix.arch }}
 
       - name: Calculate checksum and rename binary
         if: contains(matrix.arch, 'windows') == false
