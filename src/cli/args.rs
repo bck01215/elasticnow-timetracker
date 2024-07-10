@@ -58,6 +58,10 @@ pub enum Commands {
         #[clap(long, help = format!("End date of search (defaults to {})", get_today()))]
         until: Option<String>,
 
+        #[clap(short='T', long, action = clap::ArgAction::SetTrue)]
+        /// Set since to today
+        today: bool,
+
         #[clap(short, long, default_value = "10")]
         /// Limit the number of cost centers returned in the report. Any extra fields will be grouped into other
         top: Option<usize>,

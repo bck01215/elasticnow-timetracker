@@ -52,10 +52,14 @@ async fn main() {
 
         Some(cli::args::Commands::Report {
             user,
-            since,
+            mut since,
             until,
             top,
+            today,
         }) => {
+            if today {
+                since = Some(args::get_today());
+            }
             run_report(user, since, until, top).await;
         }
         _ => {

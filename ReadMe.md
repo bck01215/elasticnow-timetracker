@@ -67,6 +67,7 @@ Options:
 | `-u, --user <USER>` | Override the default user in the report |
 | `--since <SINCE>` | Start date of search (defaults to 2024-06-24) |
 | `--until <UNTIL>` | End date of search (defaults to 2024-06-26) |
+| `-T, --today` | Set since to today |
 | `-t, --top <TOP>` | Limit the number of cost centers returned in the report. Any extra fields will be grouped into other [default: 10]|
 | `-h, --help` | Print help |
 
