@@ -31,6 +31,10 @@ impl Config {
         file.write_all(toml_string.as_bytes())?;
         Ok(())
     }
+    pub fn set_new_id(&mut self, _id: &str) -> bool {
+        self.id = _id.to_string();
+        self.to_toml_file().is_ok()
+    }
 }
 
 pub fn get_config_dir() -> PathBuf {

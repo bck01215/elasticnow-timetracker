@@ -4,7 +4,10 @@ use elasticnow::elasticnow::elasticnow::ChooseOptions;
 use elasticnow::elasticnow::elasticnow::{ElasticNow, SearchResult};
 use elasticnow::elasticnow::servicenow::ServiceNow;
 use elasticnow::elasticnow::servicenow_structs::TimeWorked;
+use open::that;
 use std::collections::HashMap;
+use std::net::TcpListener;
+use tiny_http::{Response, Server};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 struct ValueOption {
@@ -15,7 +18,13 @@ struct ValueOption {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
-        .with(fmt::layer())
+        .with(
+            fmt::layer().event_format(
+                tracing_subscriber::fmt::format()
+                    .with_file(true)
+                    .with_line_number(true),
+            ),
+        )
         .with(EnvFilter::from_env("ELASTICNOW_LOG_LEVEL"))
         .init();
     let args = cli::args::get_args();
@@ -77,7 +86,7 @@ async fn run_timetrack(
     no_tkt: bool,
     all: bool,
 ) {
-    let (config, sn_client) = check_config();
+    let (mut config, sn_client) = check_config();
     tracing::debug!("New: {:?}", new);
     tracing::debug!("Comment: {:?}", comment);
     tracing::debug!("Time Worked: {:?}", time_worked);
@@ -108,7 +117,18 @@ async fn run_timetrack(
                 tkt_options = generic_options_to_value_option(&tkt_options_generic);
                 tkt_options_string = search_results_to_string(&tkt_options_generic);
             } else {
-                let es_now_client = ElasticNow::new(&config.id, &config.instance);
+                let mut es_now_client = ElasticNow::new(&config.id, &config.instance);
+                if es_now_client.check_auth().await.is_err() {
+                    tracing::error!("Unable to authenticate to ElasticNow trying to log in");
+                    let _cookie = get_cookie_from_browser(&config.instance);
+                    config.set_new_id(&_cookie);
+                    es_now_client = ElasticNow::new(&config.id, &config.instance);
+                    let err = es_now_client.check_auth().await;
+                    if err.is_err() {
+                        tracing::error!("login attempt failed");
+                        std::process::exit(1);
+                    }
+                }
                 let keywords = search.clone().unwrap_or("".to_string());
                 let tkt_options_generic = search_tickets(es_now_client, &tkt_bin, &keywords).await;
                 tkt_options = generic_options_to_value_option(&tkt_options_generic);
@@ -146,13 +166,13 @@ async fn run_timetrack(
         std::process::exit(2);
     }
     let time_worked_msg = ansi_term::Colour::Green.paint(time_worked);
-    println!("Tracking {} of time", time_worked_msg);
+    tracing::info!("Tracking {} of time", time_worked_msg);
     if !no_tkt {
         let ticket_url = ansi_term::Colour::Blue.paint(format!(
             "https://{}.service-now.com/task.do?sys_id={}",
             &config.sn_instance, sys_id
         ));
-        println!("Link to ticket: {}", ticket_url);
+        tracing::info!("Link to ticket: {}", ticket_url);
     }
     std::process::exit(0);
 }
@@ -288,7 +308,7 @@ async fn run_stdchg(search: String, bin: Option<String>, template_id: Option<Str
         "https://{}.service-now.com/change_request.do?sys_id={}",
         &config.sn_instance, sys_id
     ));
-    println!("Link to CHG: {}", ticket_url);
+    tracing::info!("Link to CHG: {}", ticket_url);
 
     std::process::exit(0);
 }
@@ -372,4 +392,53 @@ fn get_total(tasks: &Vec<TimeWorked>) -> i64 {
         .iter()
         .map(|t| t.time_in_seconds.parse::<i64>().unwrap_or_default())
         .sum()
+}
+
+fn get_cookie_from_browser(elasticnow_url: &str) -> String {
+    let mut chosen_port = 0;
+    let mut server = None;
+    for port in 8000..20000 {
+        match TcpListener::bind(("0.0.0.0", port)) {
+            Ok(listener) => {
+                server = Some(Server::from_listener(listener, None).unwrap());
+                chosen_port = port;
+                println!("Server running on port {}", port);
+                break;
+            }
+            Err(_) => {
+                println!("Port {} is in use, trying next port...", port);
+            }
+        }
+    }
+
+    let server = match server {
+        Some(s) => s,
+        None => {
+            tracing::error!(
+                "Failed to bind to any port in the range 8000..20000 when attempting auth with elasticnow"
+            );
+            std::process::exit(1);
+        }
+    };
+
+    // Define the login URL
+    let login_url = format!("{}/cli/login/redirect/{}", elasticnow_url, chosen_port);
+
+    // Open the browser for user to login
+    match that(login_url) {
+        Ok(_) => tracing::info!("Opened browser for to login to ElasticNow"),
+        Err(e) => tracing::info!("Failed to open browser: {}", e),
+    }
+
+    // Set up the local server to capture the cookie
+    let mut _id = "".to_string();
+    for request in server.incoming_requests() {
+        let response = Response::from_string("Login successful. You can close this window.");
+        _id = request.url().to_string();
+        _id.remove(0);
+        request.respond(response).unwrap();
+        break;
+    }
+    tracing::info!("Got cookie: {}", _id);
+    _id.to_string()
 }

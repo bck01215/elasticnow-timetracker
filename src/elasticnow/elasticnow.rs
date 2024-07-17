@@ -1,5 +1,5 @@
 use reqwest::Client;
-use tracing::debug;
+use tracing::{debug, Instrument};
 
 use serde::{Deserialize, Serialize};
 
@@ -68,6 +68,17 @@ impl ElasticNow {
             client,
         }
     }
+    pub async fn check_auth(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let resp = self
+            .client
+            .get(self.instance.to_owned() + "/cli/login")
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP Error while querying ElasticNow: {}", resp.status()).into());
+        }
+        Ok(())
+    }
     async fn post_json(
         &self,
         path: &str,
@@ -106,7 +117,9 @@ impl ElasticNow {
             .await?;
 
         if !resp.status().is_success() {
-            return Err(format!("HTTP Error while querying ElasticNow: {}", resp.status()).into());
+            return Err(
+                format!("HTTP Error while querying ElasticNow: {:?}", resp.status()).into(),
+            );
         }
 
         let search_results: Vec<SearchResult> = resp.json().await?;

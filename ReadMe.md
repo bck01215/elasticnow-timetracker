@@ -10,7 +10,7 @@ This project simplifies timetracking in servicenow for those who find it difficu
 
 ### Authentication
 
-To initialize the repo you will need to run `elasticnow setup`. This will generate a config.toml. The location is dependent on the operating system but can be found at the top of the help output.
+To initialize the repo you will need to run `elasticnow setup`. This will generate a config.toml. The location is dependent on the operating system but can be found at the top of the help output. After initialization, the id field will automatically update using the browser.
 
 | Flag                          | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
