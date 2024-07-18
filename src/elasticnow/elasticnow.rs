@@ -1,5 +1,4 @@
 use reqwest::Client;
-use tracing::{debug, Instrument};
 
 use serde::{Deserialize, Serialize};
 
@@ -84,7 +83,7 @@ impl ElasticNow {
         path: &str,
         body: serde_json::Value,
     ) -> Result<reqwest::Response, reqwest::Error> {
-        debug!("Getting {}", path);
+        tracing::debug!("Getting {}", path);
         self.client
             .post(self.instance.to_owned() + path)
             .json(&body)

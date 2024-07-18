@@ -172,7 +172,7 @@ async fn run_timetrack(
             "https://{}.service-now.com/task.do?sys_id={}",
             &config.sn_instance, sys_id
         ));
-        tracing::info!("Link to ticket: {}", ticket_url);
+        println!("Link to ticket: {}", ticket_url);
     }
     std::process::exit(0);
 }
@@ -308,7 +308,7 @@ async fn run_stdchg(search: String, bin: Option<String>, template_id: Option<Str
         "https://{}.service-now.com/change_request.do?sys_id={}",
         &config.sn_instance, sys_id
     ));
-    tracing::info!("Link to CHG: {}", ticket_url);
+    println!("Link to CHG: {}", ticket_url);
 
     std::process::exit(0);
 }
@@ -402,11 +402,11 @@ fn get_cookie_from_browser(elasticnow_url: &str) -> String {
             Ok(listener) => {
                 server = Some(Server::from_listener(listener, None).unwrap());
                 chosen_port = port;
-                println!("Server running on port {}", port);
+                tracing::info!("Server running on port {}", port);
                 break;
             }
             Err(_) => {
-                println!("Port {} is in use, trying next port...", port);
+                tracing::info!("Port {} is in use, trying next port...", port);
             }
         }
     }
