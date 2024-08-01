@@ -1,11 +1,12 @@
 use crate::cli::config::get_config_dir;
 use crate::elasticnow::servicenow_structs::SysIdResult;
 use ansi_term::Colour;
-use chrono::{Datelike, Local};
+use chrono::{Datelike, Duration, Local};
 use clap::{Command, CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Generator, Shell};
 use dialoguer::{theme::ColorfulTheme, Select};
 use std::{collections::HashMap, io};
+
 #[derive(Parser)]
 #[command(name = "elasticnow", about = "ElasticNow time tracking CLI", version)]
 pub struct Args {
@@ -198,12 +199,8 @@ pub fn get_today() -> String {
 
 pub fn get_week_start() -> String {
     let now = Local::now();
-    format!(
-        "{}-{:02}-{:02}",
-        now.year(),
-        now.month(),
-        now.day() - now.weekday().num_days_from_monday()
-    )
+    let now = now - Duration::days(now.weekday().num_days_from_monday() as i64);
+    format!("{}-{:02}-{:02}", now.year(), now.month(), now.day())
 }
 
 pub fn pretty_print_time_worked(time_worked: HashMap<String, i64>, top: usize, total: i64) {
